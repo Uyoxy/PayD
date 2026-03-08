@@ -13,6 +13,22 @@ import { CountdownTimer } from '../components/CountdownTimer';
 import { getSchedules, createSchedule, deleteSchedule, ScheduleRecord } from '../services/scheduleApi';
 import { BulkPaymentStatusTracker } from '../components/BulkPaymentStatusTracker';
 
+interface EmployeePreference {
+  id: string;
+  name: string;
+  amount: string;
+  currency: string;
+  wallet: string;
+}
+
+interface SchedulingConfig {
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  timeOfDay: string;
+  preferences: EmployeePreference[];
+}
+
 interface PayrollFormState {
   employeeName: string;
   amount: string;
@@ -122,14 +138,14 @@ export default function PayrollScheduler() {
     }
   };
 
-  const handleScheduleComplete = async (config: any) => {
+  const handleScheduleComplete = async (config: SchedulingConfig) => {
     try {
       const input = {
         frequency: config.frequency,
         timeOfDay: config.timeOfDay,
         startDate: new Date().toISOString().split('T')[0], // Default to today
         paymentConfig: {
-          recipients: config.preferences.map((p: any) => ({
+          recipients: config.preferences.map((p: EmployeePreference) => ({
             walletAddress: p.wallet,
             amount: p.amount,
             assetCode: p.currency,
@@ -356,7 +372,9 @@ export default function PayrollScheduler() {
 
       {isWizardOpen ? (
         <SchedulingWizard
-          onComplete={handleScheduleComplete}
+          onComplete={(config) => {
+            void handleScheduleComplete(config);
+          }}
           onCancel={() => setIsWizardOpen(false)}
         />
       ) : (
@@ -544,7 +562,9 @@ export default function PayrollScheduler() {
                   </div>
 
                   <button
-                    onClick={() => handleCancelSchedule(schedule.id)}
+                    onClick={() => {
+                      void handleCancelSchedule(schedule.id);
+                    }}
                     className="w-full py-2 bg-danger/10 hover:bg-danger/20 text-danger text-xs font-bold rounded-lg transition-colors"
                   >
                     Cancel Automation

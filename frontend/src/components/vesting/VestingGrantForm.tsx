@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
 import { Card, Heading, Input, Button } from '@stellar/design-system';
 
+interface VestingGrantFormData {
+    employeeAddress: string;
+    totalAmount: string;
+    startDate: string;
+    cliffDate: string;
+    durationYears: string;
+}
+
 interface VestingGrantFormProps {
-    onSubmit: (data: any) => void;
+    onSubmit: (data: VestingGrantFormData) => void;
     isSubmitting: boolean;
 }
 

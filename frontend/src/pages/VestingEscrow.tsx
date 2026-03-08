@@ -6,6 +6,24 @@ import { TransactionSimulationPanel } from '../components/TransactionSimulationP
 import { VestingGrantList } from '../components/vesting/VestingGrantList';
 import { VestingGrantForm } from '../components/vesting/VestingGrantForm';
 
+interface VestingGrantFormData {
+    employeeAddress: string;
+    totalAmount: string;
+    startDate: string;
+    cliffDate: string;
+    durationYears: string;
+}
+
+interface VestingGrant {
+    id: string;
+    employeeName: string;
+    totalAmount: number;
+    vestedAmount: number;
+    cliffDate: string;
+    startDate: string;
+    duration: string;
+}
+
 export default function VestingEscrow() {
     const { notifySuccess, notifyError } = useNotification();
     const {
@@ -17,7 +35,7 @@ export default function VestingEscrow() {
         isSuccess: simulationPassed,
     } = useTransactionSimulation();
 
-    const [grants, setGrants] = useState<any[]>([]);
+    const [grants, setGrants] = useState<VestingGrant[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Mock initial load
@@ -45,14 +63,14 @@ export default function VestingEscrow() {
         ]);
     }, []);
 
-    const handleCreateGrant = async () => {
+    const handleCreateGrant = async (_data: VestingGrantFormData) => {
         setIsSubmitting(true);
         try {
             // Mock XDR for simulation
             const mockXdr = 'AAAAAgAAAABmF8AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
             await simulate({ envelopeXdr: mockXdr });
             notifySuccess('Grant simulation ready', 'Review the transaction details before confirming.');
-        } catch (err) {
+        } catch {
             notifyError('Grant simulation failed', 'Please check the contract parameters.');
         } finally {
             setIsSubmitting(false);
@@ -104,7 +122,12 @@ export default function VestingEscrow() {
                 </div>
 
                 <div className="lg:col-span-2">
-                    <VestingGrantForm onSubmit={handleCreateGrant} isSubmitting={isSubmitting} />
+                    <VestingGrantForm 
+                        onSubmit={(data) => {
+                            void handleCreateGrant(data);
+                        }} 
+                        isSubmitting={isSubmitting} 
+                    />
                 </div>
             </div>
         </div>

@@ -204,13 +204,6 @@ export default function CrossAssetPayment() {
   return (
     <div className="min-h-screen bg-[#0a0a0c] text-white p-8 font-sans">
       <div className="max-w-4xl mx-auto">
-        <header className="mb-12">
-          <h1 className="text-4xl font-bold bg-linear-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
-            Soroban Cross-Asset Swap
-          </h1>
-          <p className="text-zinc-400 mt-2">
-            Seamlessly pay anyone in their preferred asset utilizing on-chain liquidity pools.
-          </p>
         <header className="mb-12 flex items-end justify-between gap-4">
           <div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">
@@ -311,10 +304,6 @@ export default function CrossAssetPayment() {
                 onClick={() => {
                   void handleInitiate();
                 }}
-                disabled={
-                  status === 'initiating' || status === 'pending' || (!!address && !selectedPath)
-                }
-                className="w-full bg-linear-to-r from-blue-600 to-indigo-600 py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 disabled={status === 'submitting' || status === 'pending' || !selectedPath}
                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
@@ -333,8 +322,6 @@ export default function CrossAssetPayment() {
 
           <div className="space-y-8">
             {/* Quote Panel */}
-            {selectedPath && (
-              <div className="bg-linear-to-br from-zinc-900 to-black border border-zinc-800 rounded-2xl p-8 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
             {(isLoadingPaths || paths.length > 0) && (
               <div className="bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 rounded-2xl p-8 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <h3 className="text-lg font-bold flex items-center gap-2 mb-6">

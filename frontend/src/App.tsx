@@ -169,6 +169,10 @@ function App() {
           element={
             <ErrorBoundary fallback={<ErrorFallback onReset={() => { }} />}>
               <VestingEscrow />
+            </ErrorBoundary>
+          }
+        />
+        <Route
           path="/revenue-split"
           element={
             <ErrorBoundary fallback={<ErrorFallback onReset={() => {}} />}>
