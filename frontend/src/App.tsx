@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
 import Home from './pages/Home';
 import Debugger from './pages/Debugger';
 import PayrollScheduler from './pages/PayrollScheduler';
@@ -11,23 +12,31 @@ import Settings from './pages/Settings';
 import CustomReportBuilder from './pages/CustomReportBuilder';
 import CrossAssetPayment from './pages/CrossAssetPayment';
 import TransactionHistory from './pages/TransactionHistory';
-
+import RevenueSplitDashboard from './pages/RevenueSplitDashboard';
 import EmployeePortal from './pages/EmployeePortal';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useTranslation } from 'react-i18next';
+import { contractService } from './services/contracts';
 
 function App() {
   const { t } = useTranslation();
 
+  // Initialize contract service on app startup
+  useEffect(() => {
+    contractService.initialize().catch((error) => {
+      console.error('Failed to initialize contract service:', error);
+    });
+  }, []);
+
   return (
     <Routes>
-      {/* public */}
+      {/* Public Routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/auth-callback" element={<AuthCallback />} />
 
-      {/* employer section: wrapped by AppLayout and protected */}
+      {/* Employer Section (Protected + Layout) */}
       <Route
         element={
           <ProtectedRoute allowedRoles={['EMPLOYER']}>
@@ -50,6 +59,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="payroll"
           element={
@@ -65,6 +75,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="employee"
           element={
@@ -80,6 +91,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="reports"
           element={
@@ -88,6 +100,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="debug"
           element={
@@ -103,6 +116,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="debug/:contractName"
           element={
@@ -118,6 +132,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="settings"
           element={
@@ -126,6 +141,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="help"
           element={
@@ -134,6 +150,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="cross-asset-payment"
           element={
@@ -142,6 +159,7 @@ function App() {
             </ErrorBoundary>
           }
         />
+
         <Route
           path="transactions"
           element={
@@ -150,10 +168,20 @@ function App() {
             </ErrorBoundary>
           }
         />
+
+        <Route
+          path="revenue-split"
+          element={
+            <ErrorBoundary fallback={<ErrorFallback onReset={() => {}} />}>
+              <RevenueSplitDashboard />
+            </ErrorBoundary>
+          }
+        />
       </Route>
 
-      {/* employee portal - separate layout/no layout but protected for EMPLOYEE */}
+      {/* Employee Portal (Protected) */}
       <Route
+        path="/portal"
         element={
           <ProtectedRoute allowedRoles={['EMPLOYEE']}>
             <ErrorBoundary
@@ -168,7 +196,6 @@ function App() {
             </ErrorBoundary>
           </ProtectedRoute>
         }
-        path="portal"
       />
     </Routes>
   );
