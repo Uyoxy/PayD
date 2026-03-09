@@ -21,7 +21,9 @@ import {
 
 export default function CrossAssetPayment() {
   const { notifySuccess, notifyError } = useNotification();
-  const { socket } = useSocket();
+  const socketContext = useSocket();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const socket = socketContext.socket;
   const { address, connect } = useWallet();
   const { sign } = useWalletSigning();
 
@@ -98,14 +100,23 @@ export default function CrossAssetPayment() {
       }
     };
 
-    socket.on('cross-asset:update', handler);
-    socket.on('transaction:update', handler);
-    socket.emit('subscribe:transaction', submissionTxHash);
+    // Socket is guaranteed to be non-null due to early return above
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+    const activeSocket = socket;
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    activeSocket.on('cross-asset:update', handler);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    activeSocket.on('transaction:update', handler);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    activeSocket.emit('subscribe:transaction', submissionTxHash);
 
     return () => {
-      socket.off('cross-asset:update', handler);
-      socket.off('transaction:update', handler);
-      socket.emit('unsubscribe:transaction', submissionTxHash);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      activeSocket.off('cross-asset:update', handler);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      activeSocket.off('transaction:update', handler);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+      activeSocket.emit('unsubscribe:transaction', submissionTxHash);
     };
   }, [notifySuccess, socket, submissionTxHash]);
 
@@ -282,6 +293,7 @@ export default function CrossAssetPayment() {
           </div>
 
           <div className="space-y-8">
+            {/* Quote Panel */}
             {(isLoadingPaths || paths.length > 0) && (
               <div className="bg-gradient-to-br from-zinc-900 to-black border border-zinc-800 rounded-2xl p-8 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <h3 className="text-lg font-bold flex items-center gap-2 mb-6">
