@@ -64,7 +64,8 @@ export const generateCertificate = async (params: CertificateGenerationParams): 
         axiosError.message ||
         'Failed to generate certificate';
       const newError = new Error(errorMessage);
-      newError.cause = error;
+      // Attach cause for error chaining (ES2022 feature, but works at runtime)
+      Object.assign(newError, { cause: error });
       throw newError;
     }
     throw error;
@@ -115,7 +116,8 @@ export const verifyCertificate = async (
         axiosError.message ||
         'Failed to verify certificate';
       const newError = new Error(errorMessage);
-      newError.cause = error;
+      // Attach cause for error chaining (ES2022 feature, but works at runtime)
+      Object.assign(newError, { cause: error });
       throw newError;
     }
     throw error;
