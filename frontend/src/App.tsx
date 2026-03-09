@@ -1,10 +1,10 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import Home from './pages/Home';
 import Debugger from './pages/Debugger';
 import PayrollScheduler from './pages/PayrollScheduler';
 import EmployeeEntry from './pages/EmployeeEntry';
-import AppLayout from './components/AppLayout';
+import EmployerLayout from './components/EmployerLayout';
 import HelpCenter from './pages/HelpCenter';
 import ErrorBoundary from './components/ErrorBoundary';
 import ErrorFallback from './components/ErrorFallback';
@@ -12,6 +12,8 @@ import Settings from './pages/Settings';
 import CustomReportBuilder from './pages/CustomReportBuilder';
 import CrossAssetPayment from './pages/CrossAssetPayment';
 import TransactionHistory from './pages/TransactionHistory';
+import AdminPanel from './pages/AdminPanel';
+import VestingEscrow from './pages/VestingEscrow';
 import RevenueSplitDashboard from './pages/RevenueSplitDashboard';
 import EmployeePortal from './pages/EmployeePortal';
 import Login from './pages/Login';
@@ -40,7 +42,7 @@ function App() {
       <Route
         element={
           <ProtectedRoute allowedRoles={['EMPLOYER']}>
-            <AppLayout />
+            <EmployerLayout />
           </ProtectedRoute>
         }
       >
@@ -134,6 +136,15 @@ function App() {
         />
 
         <Route
+          path="admin"
+          element={
+            <ErrorBoundary fallback={<ErrorFallback />}>
+              <AdminPanel />
+            </ErrorBoundary>
+          }
+        />
+
+        <Route
           path="settings"
           element={
             <ErrorBoundary fallback={<ErrorFallback onReset={() => {}} />}>
@@ -170,6 +181,15 @@ function App() {
         />
 
         <Route
+          path="vesting"
+          element={
+            <ErrorBoundary fallback={<ErrorFallback onReset={() => {}} />}>
+              <VestingEscrow />
+            </ErrorBoundary>
+          }
+        />
+
+        <Route
           path="revenue-split"
           element={
             <ErrorBoundary fallback={<ErrorFallback onReset={() => {}} />}>
@@ -197,6 +217,8 @@ function App() {
           </ProtectedRoute>
         }
       />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

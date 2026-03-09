@@ -10,7 +10,29 @@ import { useTranslation } from 'react-i18next';
 import { Card, Heading, Text, Button, Input, Select } from '@stellar/design-system';
 import { SchedulingWizard } from '../components/SchedulingWizard';
 import { CountdownTimer } from '../components/CountdownTimer';
+import {
+  getSchedules,
+  createSchedule,
+  deleteSchedule,
+  ScheduleRecord,
+} from '../services/scheduleApi';
 import { BulkPaymentStatusTracker } from '../components/BulkPaymentStatusTracker';
+
+interface EmployeePreference {
+  id: string;
+  name: string;
+  amount: string;
+  currency: string;
+  wallet: string;
+}
+
+interface SchedulingConfig {
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  timeOfDay: string;
+  preferences: EmployeePreference[];
+}
 
 interface PayrollFormState {
   employeeName: string;
@@ -54,7 +76,9 @@ const initialFormState: PayrollFormState = {
 export default function PayrollScheduler() {
   const { t } = useTranslation();
   const { notifySuccess, notifyError } = useNotification();
-  const { socket, subscribeToTransaction, unsubscribeFromTransaction } = useSocket();
+  const socketContext = useSocket();
+
+  const { socket, subscribeToTransaction, unsubscribeFromTransaction } = socketContext;
   const [formData, setFormData] = useState<PayrollFormState>(initialFormState);
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -63,6 +87,8 @@ export default function PayrollScheduler() {
     timeOfDay: string;
   } | null>(null);
   const [nextRunDate, setNextRunDate] = useState<Date | null>(null);
+  const [dbSchedules, setDbSchedules] = useState<ScheduleRecord[]>([]);
+  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
 
   const [pendingClaims, setPendingClaims] = useState<PendingClaim[]>(() => {
     const saved = localStorage.getItem('pending-claims');
@@ -95,23 +121,53 @@ export default function PayrollScheduler() {
     if (saved) {
       setFormData(saved);
     }
+    void fetchActiveSchedules();
   }, [loadSavedData]);
 
-  const handleScheduleComplete = (config: { frequency: string; timeOfDay: string }) => {
-    setActiveSchedule(config);
-    setIsWizardOpen(false);
-    notifySuccess(
-      'Payroll schedule configured!',
-      `Frequency: ${config.frequency}, time: ${config.timeOfDay}`
-    );
+  const fetchActiveSchedules = async () => {
+    setIsLoadingSchedules(true);
+    try {
+      const { schedules } = await getSchedules({ status: 'active' });
+      setDbSchedules(schedules);
+      if (schedules.length > 0) {
+        // Set the most imminent one as active for the countdown
+        const imminent = schedules[0];
+        setActiveSchedule({ frequency: imminent.frequency, timeOfDay: imminent.timeOfDay });
+        setNextRunDate(new Date(imminent.nextRunTimestamp));
+      } else {
+        setActiveSchedule(null);
+        setNextRunDate(null);
+      }
+    } catch (err) {
+      console.error('Failed to fetch schedules:', err);
+    } finally {
+      setIsLoadingSchedules(false);
+    }
+  };
 
-    // Compute next run for countdown demo
-    const d = new Date();
-    if (config.frequency === 'monthly') d.setMonth(d.getMonth() + 1);
-    else if (config.frequency === 'weekly') d.setDate(d.getDate() + 7);
-    else d.setDate(d.getDate() + 14);
+  const handleScheduleComplete = async (config: SchedulingConfig) => {
+    try {
+      const input = {
+        frequency: config.frequency,
+        timeOfDay: config.timeOfDay,
+        startDate: new Date().toISOString().split('T')[0], // Default to today
+        paymentConfig: {
+          recipients: config.preferences.map((p: EmployeePreference) => ({
+            walletAddress: p.wallet,
+            amount: p.amount,
+            assetCode: p.currency,
+          })),
+        },
+      };
 
-    setNextRunDate(d);
+      const result = await createSchedule(input);
+      notifySuccess('Payroll schedule configured!', `Ref ID: ${result.id}`);
+      setIsWizardOpen(false);
+      void fetchActiveSchedules();
+    } catch (err) {
+      console.error('Failed to create schedule:', err);
+      notifyError('Failed to create schedule', 'Please try again later.');
+    }
   };
 
   const handleChange = (
@@ -138,10 +194,12 @@ export default function PayrollScheduler() {
       }
     };
 
-    socket.on('transaction:update', handleTransactionUpdate);
+    const activeSocket = socket;
+
+    activeSocket.on('transaction:update', handleTransactionUpdate);
 
     return () => {
-      socket.off('transaction:update', handleTransactionUpdate);
+      activeSocket.off('transaction:update', handleTransactionUpdate);
     };
   }, [socket, notifySuccess]);
 
@@ -229,6 +287,17 @@ export default function PayrollScheduler() {
     }
   };
 
+  const handleCancelSchedule = async (id: number) => {
+    try {
+      await deleteSchedule(id);
+      notifySuccess('Schedule cancelled', 'The automation has been halted.');
+      void fetchActiveSchedules();
+    } catch (err) {
+      console.error('Failed to cancel schedule:', err);
+      notifyError('Cancellation failed', 'Unable to reach the server.');
+    }
+  };
+
   const handleRemoveClaim = (id: string) => {
     unsubscribeFromTransaction(id);
     const updatedClaims = pendingClaims.filter((c) => c.id !== id);
@@ -237,28 +306,43 @@ export default function PayrollScheduler() {
   };
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-start p-12 max-w-6xl mx-auto w-full">
-      <div className="w-full mb-12 flex items-end justify-between border-b border-hi pb-8">
-        <div>
-          <Heading as="h1" size="lg" weight="bold" addlClassName="mb-2 tracking-tight">
+    <div className="flex-1 flex flex-col items-center justify-start p-4 sm:p-6 lg:p-12 max-w-6xl mx-auto w-full">
+      <div className="w-full mb-6 sm:mb-8 lg:mb-12 flex flex-col sm:flex-row sm:items-end sm:justify-between border-b border-hi pb-4 sm:pb-6 lg:pb-8 gap-4">
+        <div className="flex-1 min-w-0">
+          <Heading
+            as="h1"
+            size="lg"
+            weight="bold"
+            addlClassName="mb-2 tracking-tight text-2xl sm:text-3xl lg:text-4xl"
+          >
+            {/* eslint-disable-next-line @typescript-eslint/no-unsafe-call */}
             {t('payroll.title', 'Workforce')}{' '}
-            <span className="text-accent">{t('payroll.titleHighlight', 'Scheduler')}</span>
+            <span className="text-accent">
+              {/* eslint-disable-next-line @typescript-eslint/no-unsafe-call */}
+              {t('payroll.titleHighlight', 'Scheduler')}
+            </span>
           </Heading>
           <Text
             as="p"
             size="sm"
             weight="regular"
-            addlClassName="text-muted font-mono tracking-wider uppercase"
+            addlClassName="text-muted font-mono tracking-wider uppercase text-xs sm:text-sm"
           >
+            {}
             {t('payroll.subtitle', 'Automated distribution engine')}
           </Text>
         </div>
-        <div className="flex flex-col items-end gap-2">
+        <div className="flex flex-row sm:flex-col items-center sm:items-end gap-3 sm:gap-2">
           <AutosaveIndicator saving={saving} lastSaved={lastSaved} />
-          <button onClick={() => setIsWizardOpen(true)}>
+          <button
+            onClick={() => setIsWizardOpen(true)}
+            className="p-2.5 rounded-lg hover:bg-white/5 transition-colors touch-manipulation"
+            style={{ minHeight: '44px', minWidth: '44px' }}
+            aria-label="Open scheduling wizard"
+          >
             <svg
-              width="14"
-              height="14"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -274,13 +358,14 @@ export default function PayrollScheduler() {
       </div>
 
       {activeSchedule && (
-        <div className="w-full mb-12 bg-black/20 border border-success/30 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-6 relative overflow-hidden">
+        <div className="w-full mb-6 sm:mb-8 lg:mb-12 bg-black/20 border border-success/30 rounded-xl sm:rounded-2xl p-4 sm:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 relative overflow-hidden">
           <div className="absolute top-0 left-0 w-1 h-full bg-success"></div>
-          <div>
-            <h3 className="text-success font-black text-lg mb-1 flex items-center gap-2">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-success font-black text-base sm:text-lg mb-1 flex items-center gap-2">
               <svg
-                width="18"
-                height="18"
+                width="16"
+                height="16"
+                className="sm:w-[18px] sm:h-[18px]"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -292,13 +377,13 @@ export default function PayrollScheduler() {
               </svg>
               Automation Active
             </h3>
-            <p className="text-muted text-sm">
+            <p className="text-muted text-xs sm:text-sm break-words">
               Scheduled to run{' '}
               <span className="font-bold text-text capitalize">{activeSchedule.frequency}</span> at{' '}
               <span className="font-mono text-text">{activeSchedule.timeOfDay}</span>
             </p>
           </div>
-          <div className="bg-bg border border-hi rounded-xl p-4 shadow-inner">
+          <div className="bg-bg border border-hi rounded-xl p-3 sm:p-4 shadow-inner w-full md:w-auto">
             <span className="block text-[10px] uppercase font-bold text-muted mb-2 tracking-widest text-center">
               Next Scheduled Run
             </span>
@@ -309,18 +394,20 @@ export default function PayrollScheduler() {
 
       {isWizardOpen ? (
         <SchedulingWizard
-          onComplete={handleScheduleComplete}
+          onComplete={(config) => {
+            void handleScheduleComplete(config);
+          }}
           onCancel={() => setIsWizardOpen(false)}
         />
       ) : (
-        <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-8 mb-12">
+        <div className="w-full grid grid-cols-1 lg:grid-cols-5 gap-4 sm:gap-6 lg:gap-8 mb-6 sm:mb-8 lg:mb-12">
           <div className="lg:col-span-3">
             <form
               onSubmit={(e: React.FormEvent) => {
                 e.preventDefault();
                 void handleInitialize();
               }}
-              className="w-full grid grid-cols-1 md:grid-cols-2 gap-6 card glass noise"
+              className="w-full grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 card glass noise p-4 sm:p-6"
             >
               <div className="md:col-span-2">
                 <Input
@@ -355,7 +442,9 @@ export default function PayrollScheduler() {
                   value={formData.frequency}
                   onChange={handleChange}
                 >
+                  {}
                   <option value="weekly">{t('payroll.frequencyWeekly', 'Weekly')}</option>
+                  {}
                   <option value="monthly">{t('payroll.frequencyMonthly', 'Monthly')}</option>
                 </Select>
               </div>
@@ -449,29 +538,129 @@ export default function PayrollScheduler() {
         </div>
       )}
 
-      <div className="w-full">
-        <Heading as="h2" size="sm" weight="bold" addlClassName="mb-4">
-          Pending Claims
+      <div className="w-full mb-6 sm:mb-8 lg:mb-12">
+        <Heading as="h2" size="sm" weight="bold" addlClassName="mb-4 text-lg sm:text-xl">
+          Scheduled Automations
+        </Heading>
+        {isLoadingSchedules ? (
+          <div className="flex justify-center p-8">
+            <span className="animate-spin text-accent">
+              <svg
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M22 12a10 10 0 0 1-10 10" />
+              </svg>
+            </span>
+          </div>
+        ) : dbSchedules.length === 0 ? (
+          <Card>
+            <Text
+              as="p"
+              size="sm"
+              weight="regular"
+              addlClassName="text-muted p-4 text-xs sm:text-sm"
+            >
+              No active payroll schedules found in the database.
+            </Text>
+          </Card>
+        ) : (
+          <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+            {dbSchedules.map((schedule) => (
+              <li key={schedule.id} className="card glass noise relative overflow-hidden group">
+                <div className="absolute top-0 right-0 p-3">
+                  <span className="px-2 py-0.5 rounded-full bg-success/20 text-success text-[10px] font-bold uppercase tracking-widest">
+                    {schedule.status}
+                  </span>
+                </div>
+                <div className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-base capitalize">
+                        {schedule.frequency} Distribution
+                      </h4>
+                      <p className="text-xs text-muted font-mono">{schedule.timeOfDay} UTC</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 mb-6">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted">Next Run</span>
+                      <span className="font-mono text-text">
+                        {new Date(schedule.nextRunTimestamp).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted">Recipients</span>
+                      <span className="font-bold text-text">
+                        {schedule.paymentConfig.recipients.length} Employees
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      void handleCancelSchedule(schedule.id);
+                    }}
+                    className="w-full py-3 bg-danger/10 hover:bg-danger/20 text-danger text-xs font-bold rounded-lg transition-colors touch-manipulation min-h-[44px]"
+                  >
+                    Cancel Automation
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="w-full mb-6 sm:mb-8 lg:mb-12">
+        <Heading as="h2" size="sm" weight="bold" addlClassName="mb-4 text-lg sm:text-xl">
+          Recent Manual Claims
         </Heading>
         <Card>
           {pendingClaims.length === 0 ? (
-            <Text as="p" size="sm" weight="regular" addlClassName="text-muted">
-              No pending claimable balances.
+            <Text
+              as="p"
+              size="sm"
+              weight="regular"
+              addlClassName="text-muted p-4 text-xs sm:text-sm"
+            >
+              No recent manual claimable balances.
             </Text>
           ) : (
-            <ul className="flex flex-col gap-4">
+            <ul className="flex flex-col gap-3 sm:gap-4 p-4 sm:p-6">
               {pendingClaims.map((claim: PendingClaim) => (
-                <li key={claim.id} className="border border-hi p-4 rounded-lg">
-                  <div className="flex justify-between mb-2">
-                    <Heading as="h3" size="xs" weight="bold">
+                <li key={claim.id} className="border border-hi p-3 sm:p-4 rounded-lg">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 sm:gap-0 mb-3">
+                    <Heading as="h3" size="xs" weight="bold" addlClassName="text-sm sm:text-base">
                       {claim.employeeName}
                     </Heading>
-                    <span className="bg-accent/20 text-accent px-2 py-1 rounded-full text-xs">
+                    <span className="bg-accent/20 text-accent px-2 py-1 rounded-full text-xs self-start sm:self-auto">
                       {claim.status}
                     </span>
                   </div>
-                  <div className="text-sm text-muted flex justify-between items-center">
-                    <div>
+                  <div className="text-xs sm:text-sm text-muted flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                    <div className="flex-1 min-w-0 space-y-1">
                       <Text as="p" size="xs" weight="regular">
                         Amount: {claim.amount} USDC
                       </Text>
@@ -482,7 +671,7 @@ export default function PayrollScheduler() {
                         as="p"
                         size="xs"
                         weight="regular"
-                        addlClassName="font-mono truncate max-w-[200px]"
+                        addlClassName="font-mono break-all sm:truncate sm:max-w-[200px]"
                         title={claim.claimantPublicKey}
                       >
                         To: {claim.claimantPublicKey}
@@ -490,7 +679,7 @@ export default function PayrollScheduler() {
                     </div>
                     <button
                       onClick={() => handleRemoveClaim(claim.id)}
-                      className="text-danger hover:text-danger/80 text-sm font-medium"
+                      className="text-danger hover:text-danger/80 text-sm font-medium py-2 px-4 rounded-lg hover:bg-danger/10 transition-colors touch-manipulation min-h-[44px] self-start sm:self-auto"
                     >
                       Cancel
                     </button>
@@ -502,7 +691,7 @@ export default function PayrollScheduler() {
         </Card>
       </div>
 
-      <div className="w-full">
+      <div className="w-full mb-6 sm:mb-8 lg:mb-12">
         <BulkPaymentStatusTracker organizationId={1} />
       </div>
     </div>
